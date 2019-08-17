@@ -48,6 +48,70 @@ extern const uint8_t qjscalc[];
 extern const uint32_t qjscalc_size;
 #endif
 
+
+// -----------------------------------
+
+#define countof(x) (sizeof(x) / sizeof((x)[0]))
+
+static int fib(int n)
+{
+    if (n <= 0)
+        return 0;
+    else if (n == 1)
+        return 1;
+    else
+        return fib(n - 1) + fib(n - 2);
+}
+
+static JSValue js_fib(JSContext *ctx, JSValueConst this_val,
+                      int argc, JSValueConst *argv)
+{
+    int n, res;
+    if (JS_ToInt32(ctx, &n, argv[0]))
+        return JS_EXCEPTION;
+    res = fib(n);
+    return JS_NewInt32(ctx, res);
+}
+
+static JSValue js_concat_strings(JSContext *ctx, JSValueConst this_val,
+                      int argc, JSValueConst *argv)
+{
+    char *res = malloc(100);
+    const char *a = JS_ToCString(ctx,argv[0]);
+    const char *b = JS_ToCString(ctx, argv[1]);
+    
+    if ((a==NULL)  || (b==NULL)) {
+        return JS_EXCEPTION;
+    }
+    strcpy(res, a);
+    strcat(res, "+");
+    strcat(res, b);
+    return JS_NewString(ctx, res);
+}
+
+
+static const JSCFunctionListEntry js_fib_funcs[] = {
+    JS_CFUNC_DEF("calcFib", 1, js_fib ),
+    JS_CFUNC_DEF("concatStrings", 2, js_concat_strings ),
+};
+
+static int js_fib_init(JSContext *ctx, JSModuleDef *m)
+{
+    return JS_SetModuleExportList(ctx, m, js_fib_funcs,
+                                  countof(js_fib_funcs));
+}
+
+JSModuleDef *js_init_module_fib(JSContext *ctx, const char *module_name)
+{
+    JSModuleDef *m;
+    m = JS_NewCModule(ctx, module_name, js_fib_init);
+    if (!m)
+        return NULL;
+    JS_AddModuleExportList(ctx, m, js_fib_funcs, countof(js_fib_funcs));
+    return m;
+}
+// ------------------------------------
+
 static int eval_buf(JSContext *ctx, const void *buf, int buf_len,
                     const char *filename, int eval_flags)
 {
@@ -389,15 +453,19 @@ int main(int argc, char **argv)
         js_init_module_std(ctx, "std");
         js_init_module_os(ctx, "os");
 
+        /* Guido */
+       JSModuleDef *fib_module_def = js_init_module_fib(ctx, "fib");
+
         /* make 'std' and 'os' visible to non module code */
         if (load_std) {
             const char *str = "import * as std from 'std';\n"
                 "import * as os from 'os';\n"
+                "import * as fib from 'fib';\n"
                 "std.global.std = std;\n"
-                "std.global.os = os;\n";
+                "std.global.os = os;\n"
+                "std.global.fib = fib;\n";
             eval_buf(ctx, str, strlen(str), "<input>", JS_EVAL_TYPE_MODULE);
         }
-
         if (expr) {
             if (eval_buf(ctx, expr, strlen(expr), "<cmdline>", 0))
                 goto fail;
